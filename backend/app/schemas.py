@@ -53,6 +53,9 @@ class JobOut(BaseModel):
     created_by: str
     metrics: dict[str, Any] | None
     error_message: str | None
+    gate_passed: bool | None
+    gate_violations: list[dict[str, Any]] | None
+    gate_thresholds: dict[str, Any] | None
     created_at: datetime
     finished_at: datetime | None
     stages: list[StageOut] = []
@@ -68,10 +71,41 @@ class JobListItem(BaseModel):
     created_by: str
     metrics: dict[str, Any] | None
     error_message: str | None
+    gate_passed: bool | None
+    gate_violations: list[dict[str, Any]] | None
     created_at: datetime
     finished_at: datetime | None
 
     model_config = {"from_attributes": True}
+
+
+class GateSettingsOut(BaseModel):
+    mean_quality_min: float
+    n_rate_max: float
+    updated_by: str
+    updated_at: datetime | None
+
+    model_config = {"from_attributes": True}
+
+
+class GateSettingsUpdate(BaseModel):
+    mean_quality_min: float
+    n_rate_max: float
+
+
+class GateViolationOut(BaseModel):
+    """One row in the dedicated gate-violation list: a successful job that tripped the gate."""
+
+    job_id: int
+    sample_name: str
+    created_by: str
+    mean_quality: float | None
+    n_rate: float | None
+    reads: int | None
+    violations: list[dict[str, Any]]
+    thresholds: dict[str, Any]
+    created_at: datetime
+    finished_at: datetime | None
 
 
 class HealthOut(BaseModel):

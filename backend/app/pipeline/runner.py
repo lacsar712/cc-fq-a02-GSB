@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
+from app.gate import evaluate_gate, get_thresholds
 from app.models import Job, JobStage
 from app.pipeline.actors import (
     ACTOR_CHAIN,
@@ -94,10 +95,19 @@ def run_pipeline_sync(db: Session, job: Job) -> Job:
         job.status = "success"
         job.metrics = ctx.metrics
         job.error_message = None
+        # Gate only judges successful jobs; failed jobs keep NULL gate fields.
+        thresholds = get_thresholds(db)
+        passed, violations = evaluate_gate(ctx.metrics, thresholds)
+        job.gate_passed = passed
+        job.gate_violations = violations
+        job.gate_thresholds = thresholds.as_dict()
     else:
         job.status = "failed"
         job.metrics = ctx.metrics or None
         job.error_message = ctx.error or "流水线失败"
+        job.gate_passed = None
+        job.gate_violations = None
+        job.gate_thresholds = None
     job.finished_at = _utcnow()
     db.commit()
     db.refresh(job)

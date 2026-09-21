@@ -62,4 +62,19 @@ export async function createJob(body) {
   return data
 }
 
+export async function getGateSettings() {
+  const { data } = await api.get('/gate/settings')
+  return data
+}
+
+export async function updateGateSettings(body) {
+  const { data } = await api.put('/gate/settings', body)
+  return data
+}
+
+export async function listGateViolations() {
+  const { data } = await api.get('/gate/violations')
+  return data
+}
+
 export default api

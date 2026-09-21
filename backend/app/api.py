@@ -3,9 +3,17 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.auth import authenticate_user, create_access_token, get_current_user, require_bioops
 from app.database import SessionLocal, get_db
-from app.models import Job, JobStage, Sample
+from app.gate import (
+    get_thresholds,
+    update_thresholds,
+    validate_thresholds,
+)
+from app.models import Job, JobStage, QualityGateSettings, Sample
 from app.pipeline.runner import create_job_stages, run_pipeline_sync
 from app.schemas import (
+    GateSettingsOut,
+    GateSettingsUpdate,
+    GateViolationOut,
     HealthOut,
     JobCreate,
     JobListItem,
@@ -127,3 +135,71 @@ def get_job_stages(
         .order_by(JobStage.stage_order)
         .all()
     )
+
+
+# ---------------------------------------------------------------------------
+# Quality gate policy
+# ---------------------------------------------------------------------------
+
+
+@router.get("/gate/settings", response_model=GateSettingsOut)
+def get_gate_settings(
+    _user: dict = Depends(get_current_user), db: Session = Depends(get_db)
+):
+    """Current gate thresholds. Any authenticated user (ops + auditor) may read."""
+    row = db.query(QualityGateSettings).filter(QualityGateSettings.id == 1).first()
+    if row is None:
+        # Ensure the persisted row exists (mirrors app.gate.get_thresholds).
+        get_thresholds(db)
+        row = db.query(QualityGateSettings).filter(QualityGateSettings.id == 1).first()
+    return row
+
+
+@router.put("/gate/settings", response_model=GateSettingsOut)
+def put_gate_settings(
+    body: GateSettingsUpdate,
+    user: dict = Depends(require_bioops),
+    db: Session = Depends(get_db),
+):
+    """Change gate thresholds (ops only). The change is written to the audit trail."""
+    errors = validate_thresholds(body.mean_quality_min, body.n_rate_max)
+    if errors:
+        raise HTTPException(status_code=400, detail="；".join(errors))
+    update_thresholds(
+        db,
+        mean_quality_min=float(body.mean_quality_min),
+        n_rate_max=float(body.n_rate_max),
+        changed_by=user["username"],
+    )
+    return db.query(QualityGateSettings).filter(QualityGateSettings.id == 1).first()
+
+
+@router.get("/gate/violations", response_model=list[GateViolationOut])
+def list_gate_violations(
+    _user: dict = Depends(get_current_user), db: Session = Depends(get_db)
+):
+    """
+    Dedicated list: only SUCCESSFUL jobs that tripped the gate.
+    Failed/pending jobs never appear here; compliant successful jobs don't either.
+    """
+    jobs = (
+        db.query(Job)
+        .filter(Job.status == "success", Job.gate_passed.is_(False))
+        .order_by(Job.id.desc())
+        .all()
+    )
+    return [
+        GateViolationOut(
+            job_id=job.id,
+            sample_name=job.sample_name,
+            created_by=job.created_by,
+            mean_quality=(job.metrics or {}).get("mean_quality"),
+            n_rate=(job.metrics or {}).get("n_rate"),
+            reads=(job.metrics or {}).get("reads"),
+            violations=job.gate_violations or [],
+            thresholds=job.gate_thresholds or {},
+            created_at=job.created_at,
+            finished_at=job.finished_at,
+        )
+        for job in jobs
+    ]

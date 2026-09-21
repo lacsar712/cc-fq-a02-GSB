@@ -14,6 +14,38 @@
       <div v-if="job.error_message" class="q-mt-sm">失败原因：{{ job.error_message }}</div>
     </q-banner>
 
+    <q-banner
+        v-if="job && job.status === 'success' && job.gate_passed === false"
+        rounded
+        class="bg-negative text-white q-mb-md">
+      <q-icon name="gpp_bad" class="q-mr-sm" />
+      该作业已触发质量门禁（判定阈值：
+      Q≥{{ job.gate_thresholds?.mean_quality_min ?? '—' }} ·
+      N≤{{ job.gate_thresholds?.n_rate_max ?? '—' }}）
+      <div class="q-mt-sm">
+        <q-chip
+            v-for="v in job.gate_violations || []"
+            :key="v.field"
+            dense
+            square
+            color="white"
+            text-color="negative"
+            :label="v.message" />
+      </div>
+      <div class="q-mt-sm">
+        <q-btn flat dense no-caps label="查看超标作业列表" to="/gate" />
+      </div>
+    </q-banner>
+    <q-banner
+        v-else-if="job && job.status === 'success' && job.gate_passed === true"
+        rounded
+        class="bg-positive text-white q-mb-md">
+      <q-icon name="verified_user" class="q-mr-sm" />
+      该作业通过质量门禁（判定阈值：
+      Q≥{{ job.gate_thresholds?.mean_quality_min ?? '—' }} ·
+      N≤{{ job.gate_thresholds?.n_rate_max ?? '—' }}）
+    </q-banner>
+
     <div class="text-subtitle1 q-mb-sm">Actor 阶段时间线</div>
     <q-timeline color="primary" class="q-mb-lg">
       <q-timeline-entry

@@ -30,6 +30,19 @@
           </q-badge>
         </q-td>
       </template>
+      <template #body-cell-gate="props">
+        <q-td :props="props">
+          <q-badge v-if="props.row.status === 'success' && props.row.gate_passed === true" color="positive">
+            门禁通过
+          </q-badge>
+          <q-badge
+              v-else-if="props.row.status === 'success' && props.row.gate_passed === false"
+              color="negative">
+            触发门禁
+          </q-badge>
+          <span v-else class="text-grey-6">—</span>
+        </q-td>
+      </template>
       <template #body-cell-metrics="props">
         <q-td :props="props">
           <span v-if="props.row.metrics">
@@ -64,6 +77,7 @@ const columns = [
   { name: 'id', label: 'ID', field: 'id', align: 'left' },
   { name: 'sample_name', label: '样例', field: 'sample_name', align: 'left' },
   { name: 'status', label: '状态', field: 'status', align: 'left' },
+  { name: 'gate', label: '门禁', field: 'gate', align: 'left' },
   { name: 'created_by', label: '提交人', field: 'created_by', align: 'left' },
   { name: 'metrics', label: '指标摘要', field: 'metrics', align: 'left' },
   {

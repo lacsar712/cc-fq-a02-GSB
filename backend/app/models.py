@@ -1,9 +1,23 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, Boolean, JSON, func
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    JSON,
+    String,
+    Text,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+
+# Default quality gate thresholds (seeded once; ops can change at runtime).
+DEFAULT_MEAN_QUALITY_MIN = 20.0
+DEFAULT_N_RATE_MAX = 0.10
 
 
 class Sample(Base):
@@ -28,13 +42,46 @@ class Job(Base):
     metrics: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     fastq_snapshot: Mapped[str] = mapped_column(Text, nullable=False)
+    # Quality gate result, evaluated against the gate in effect at run time.
+    # Only successful jobs carry a gate verdict; failed jobs stay NULL.
+    gate_passed: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    gate_violations: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    gate_thresholds: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     stages: Mapped[list["JobStage"]] = relationship(
         "JobStage", back_populates="job", cascade="all, delete-orphan", order_by="JobStage.stage_order"
     )
     sample: Mapped[Sample | None] = relationship("Sample")
+
+
+class QualityGateSettings(Base):
+    """Singleton row (id always 1) holding the current quality gate thresholds."""
+
+    __tablename__ = "quality_gate_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    mean_quality_min: Mapped[float] = mapped_column(Float, nullable=False)
+    n_rate_max: Mapped[float] = mapped_column(Float, nullable=False)
+    updated_by: Mapped[str] = mapped_column(String(64), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class QualityGateChange(Base):
+    """Append-only audit trail of gate threshold changes."""
+
+    __tablename__ = "quality_gate_changes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    mean_quality_min: Mapped[float] = mapped_column(Float, nullable=False)
+    n_rate_max: Mapped[float] = mapped_column(Float, nullable=False)
+    changed_by: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class JobStage(Base):
