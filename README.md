@@ -49,6 +49,21 @@ docker compose up --build
 5. 退出，用 `auditor` / `audit123456` 登录：可看历史与详情，提交作业接口返回 403 / 前端无提交入口。
 6. 健康检查：`curl http://localhost:8184/api/health`
 
+## 质量门禁（Quality Gate）
+
+质控成功的作业按门禁阈值判定，超标作业进入**质量门禁**页的专用列表（失败作业不进列表）。
+
+- 阈值：平均质量下限 `min_mean_quality`（默认 30）、N 率上限 `max_n_rate`（默认 0.05），保存在 `quality_gates` 表单例行。
+- 仅 `bioops` 可改阈值（`PUT`，记录更新人）；`auditor` 只读超标列表。
+- 阈值保存后立即生效，只判定**之后完成**的作业；历史作业需重跑才会按新阈值进入列表。
+- 列表按作业聚合，行内写清每个超标字段（如「平均质量(mean_quality) 低于下限：实际 39.938 < 阈值 40」）。
+
+### 验收口令复现步骤
+
+1. `bioops` 登录，用合格样例 `demo-good-r1`（mean_quality≈39.94，n_rate≈0.021）提交作业 → 默认阈值下通过，不在门禁列表。
+2. 打开 **质量门禁**，把平均质量下限抬高到 `40` 并保存。
+3. 用同一样例**重跑**一次 → 新作业成功但触发门禁，门禁列表出现该条，行内显示「平均质量 低于下限：实际 39.938 < 阈值 40」。
+
 ## API
 
 - `POST /api/auth/login`
@@ -58,6 +73,9 @@ docker compose up --build
 - `GET  /api/jobs`
 - `GET  /api/jobs/{id}`
 - `GET  /api/jobs/{id}/stages`
+- `GET  /api/quality-gate`（登录可读）
+- `PUT  /api/quality-gate` `{ "min_mean_quality": 40, "max_n_rate": 0.05 }`（仅 bioops）
+- `GET  /api/quality-gate/violations`（登录可读，触发门禁的成功作业）
 
 ## 本地单测（可选）
 
@@ -81,10 +99,10 @@ pytest -q
     seed.py
     data/{good,broken}.fastq
     app/
-      main.py api.py auth.py models.py schemas.py
+      main.py api.py auth.py models.py schemas.py quality_gate.py
       pipeline/{actors,runner}.py
-    tests/test_actors.py
+    tests/{conftest,test_actors,test_quality_gate}.py
   frontend/
     Dockerfile nginx.conf
-    src/pages/{Login,Samples,JobSubmit,JobDetail,JobHistory}Page.vue
+    src/pages/{Login,Samples,JobSubmit,JobDetail,JobHistory,QualityGate}Page.vue
 ```

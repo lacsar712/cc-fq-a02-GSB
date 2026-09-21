@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, Boolean, JSON, func
+from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text, Boolean, JSON, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -50,3 +50,34 @@ class JobStage(Base):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     job: Mapped[Job] = relationship("Job", back_populates="stages")
+
+
+class QualityGate(Base):
+    """Singleton (id=1) quality-gate thresholds; updated by bioops only."""
+
+    __tablename__ = "quality_gates"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    min_mean_quality: Mapped[float] = mapped_column(Float, nullable=False)
+    max_n_rate: Mapped[float] = mapped_column(Float, nullable=False)
+    updated_by: Mapped[str] = mapped_column(String(64), default="系统默认")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class QualityGateViolation(Base):
+    """One row per over-limit metric of a *successful* job (evaluated at finish time)."""
+
+    __tablename__ = "quality_gate_violations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    job_id: Mapped[int] = mapped_column(ForeignKey("jobs.id"), nullable=False)
+    field: Mapped[str] = mapped_column(String(32), nullable=False)  # mean_quality / n_rate
+    rule: Mapped[str] = mapped_column(String(8), nullable=False)  # min / max
+    threshold_value: Mapped[float] = mapped_column(Float, nullable=False)
+    actual_value: Mapped[float] = mapped_column(Float, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    job: Mapped[Job] = relationship("Job")

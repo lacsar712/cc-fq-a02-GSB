@@ -62,4 +62,19 @@ export async function createJob(body) {
   return data
 }
 
+export async function getQualityGate() {
+  const { data } = await api.get('/quality-gate')
+  return data
+}
+
+export async function updateQualityGate(body) {
+  const { data } = await api.put('/quality-gate', body)
+  return data
+}
+
+export async function listGateViolations() {
+  const { data } = await api.get('/quality-gate/violations')
+  return data
+}
+
 export default api

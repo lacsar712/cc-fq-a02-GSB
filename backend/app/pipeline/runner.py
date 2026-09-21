@@ -17,6 +17,7 @@ from app.pipeline.actors import (
     QueueMessage,
     ReportActor,
 )
+from app.quality_gate import get_or_create_gate, record_violations
 
 
 STAGE_NAMES = [cls.name for cls in ACTOR_CHAIN]
@@ -94,6 +95,9 @@ def run_pipeline_sync(db: Session, job: Job) -> Job:
         job.status = "success"
         job.metrics = ctx.metrics
         job.error_message = None
+        # Gate applies to successful jobs only; judge with the thresholds in effect now.
+        gate = get_or_create_gate(db)
+        record_violations(db, job, gate)
     else:
         job.status = "failed"
         job.metrics = ctx.metrics or None

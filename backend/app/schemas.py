@@ -77,3 +77,37 @@ class JobListItem(BaseModel):
 class HealthOut(BaseModel):
     status: str
     service: str
+
+
+class QualityGateOut(BaseModel):
+    min_mean_quality: float
+    max_n_rate: float
+    updated_by: str
+    updated_at: datetime | None
+
+    model_config = {"from_attributes": True}
+
+
+class QualityGateUpdate(BaseModel):
+    min_mean_quality: float = Field(ge=0, le=93)
+    max_n_rate: float = Field(ge=0, le=1)
+
+
+class GateViolationDetailOut(BaseModel):
+    field: str
+    rule: str
+    threshold_value: float
+    actual_value: float
+    message: str
+
+
+class GateViolationOut(BaseModel):
+    job_id: int
+    sample_name: str
+    created_by: str
+    mean_quality: float | None
+    n_rate: float | None
+    violations: list[GateViolationDetailOut]
+    message: str
+    job_created_at: datetime
+    triggered_at: datetime

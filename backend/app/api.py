@@ -3,14 +3,19 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.auth import authenticate_user, create_access_token, get_current_user, require_bioops
 from app.database import SessionLocal, get_db
-from app.models import Job, JobStage, Sample
+from app.models import Job, JobStage, QualityGateViolation, Sample
 from app.pipeline.runner import create_job_stages, run_pipeline_sync
+from app.quality_gate import describe_violation, get_or_create_gate
 from app.schemas import (
+    GateViolationDetailOut,
+    GateViolationOut,
     HealthOut,
     JobCreate,
     JobListItem,
     JobOut,
     LoginRequest,
+    QualityGateOut,
+    QualityGateUpdate,
     SampleOut,
     StageOut,
     TokenResponse,
@@ -127,3 +132,69 @@ def get_job_stages(
         .order_by(JobStage.stage_order)
         .all()
     )
+
+
+@router.get("/quality-gate", response_model=QualityGateOut)
+def get_quality_gate(_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    return get_or_create_gate(db)
+
+
+@router.put("/quality-gate", response_model=QualityGateOut)
+def update_quality_gate(
+    body: QualityGateUpdate,
+    user: dict = Depends(require_bioops),
+    db: Session = Depends(get_db),
+):
+    gate = get_or_create_gate(db)
+    gate.min_mean_quality = body.min_mean_quality
+    gate.max_n_rate = body.max_n_rate
+    gate.updated_by = user["username"]
+    db.commit()
+    db.refresh(gate)
+    return gate
+
+
+@router.get("/quality-gate/violations", response_model=list[GateViolationOut])
+def list_gate_violations(
+    _user: dict = Depends(get_current_user), db: Session = Depends(get_db)
+):
+    """Dedicated list: successful jobs that tripped the gate, grouped per job."""
+    rows = (
+        db.query(QualityGateViolation, Job)
+        .join(Job, QualityGateViolation.job_id == Job.id)
+        .order_by(QualityGateViolation.created_at.desc(), QualityGateViolation.id.desc())
+        .all()
+    )
+    grouped: dict[int, GateViolationOut] = {}
+    order: list[int] = []
+    for v, job in rows:
+        if job.id not in grouped:
+            metrics = job.metrics or {}
+            grouped[job.id] = GateViolationOut(
+                job_id=job.id,
+                sample_name=job.sample_name,
+                created_by=job.created_by,
+                mean_quality=metrics.get("mean_quality"),
+                n_rate=metrics.get("n_rate"),
+                violations=[],
+                message="",
+                job_created_at=job.created_at,
+                triggered_at=v.created_at,
+            )
+            order.append(job.id)
+        grouped[job.id].violations.append(
+            GateViolationDetailOut(
+                field=v.field,
+                rule=v.rule,
+                threshold_value=v.threshold_value,
+                actual_value=v.actual_value,
+                message=describe_violation(v),
+            )
+        )
+
+    result: list[GateViolationOut] = []
+    for job_id in order:
+        item = grouped[job_id]
+        item.message = "；".join(d.message for d in item.violations)
+        result.append(item)
+    return result
